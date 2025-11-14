@@ -1,18 +1,32 @@
 from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker, declarative_base, Session
-from app.config import settings
+from sqlalchemy.ext.declarative import declarative_base
+from sqlalchemy.orm import sessionmaker
+from app.config import get_settings
 
-SQLALCHEMY_DATABASE_URL = settings.DATABASE_URL
+settings = get_settings()
 
-engine = create_engine(SQLALCHEMY_DATABASE_URL, connect_args={"check_same_thread": False})  # Needed for SQLite
+# Create engine
+engine = create_engine(
+    settings.database_url,
+    connect_args={"check_same_thread": False}  # Needed for SQLite
+)
+
+# Create session
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
+# Base class for models
 Base = declarative_base()
 
 
-def get_db() -> Session:
+def get_db():
+    """Dependency for getting database session"""
     db = SessionLocal()
     try:
         yield db
     finally:
         db.close()
+
+
+def init_db():
+    """Initialize database tables"""
+    Base.metadata.create_all(bind=engine)

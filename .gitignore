@@ -1,0 +1,24 @@
+# Python cache
+__pycache__/
+*.pyc
+
+# Virtual environment
+.venv/
+venv/
+
+# Environment files
+.env
+
+# SQLite DB
+*.db
+
+# IDE files
+.idea/
+.vscode/
+
+# Bytecode
+*.pyo
+*.pyd
+
+# PyCharm project
+*.iml

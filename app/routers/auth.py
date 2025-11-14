@@ -1,92 +1,68 @@
+from datetime import timedelta
 from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.orm import Session
-from sqlalchemy import and_
-from typing import List
-
-from app import schemas
-from app.models import Post, User
 from app.database import get_db
-from app.routers.auth import get_current_user
+from app.schemas.token import Token
+from app.schemas.user import UserCreate, User as UserSchema
+from app.crud.user import create_user, get_user_by_username, get_user_by_email
+from app.utils.security import verify_password, create_access_token
+from app.config import get_settings
 
-router = APIRouter(
-    prefix="/posts",
-    tags=["Posts"]
-)
+router = APIRouter(prefix="/auth", tags=["Authentication"])
+settings = get_settings()
 
-# --------- Create Post ---------
-@router.post("/", response_model=schemas.PostOut)
-def create_post(
-    post: schemas.PostCreate,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+
+# noinspection PyTypeChecker
+@router.post("/register", response_model=UserSchema, status_code=status.HTTP_201_CREATED)
+def register(user: UserCreate, db: Session = Depends(get_db)):
+    """Register a new user"""
+    # Check if user with email exists
+    db_user = get_user_by_email(db, email=user.email)
+    if db_user:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Email already registered"
+        )
+
+    # Check if user with username exists
+    db_user = get_user_by_username(db, username=user.username)
+    if db_user:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Username already taken"
+        )
+
+    return create_user(db=db, user=user)
+
+
+@router.post("/login", response_model=Token)
+def login(
+        form_data: OAuth2PasswordRequestForm = Depends(),
+        db: Session = Depends(get_db)
 ):
-    new_post = Post(
-        title=post.title,
-        content=post.content,
-        owner_id=current_user.id
+    """Login and get access token"""
+    # Authenticate user
+    user = get_user_by_username(db, username=form_data.username)
+    if not user or not verify_password(form_data.password, user.hashed_password):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Incorrect username or password",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+    # Check if user is active
+    if not user.is_active:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Inactive user"
+        )
+
+    # Create access token
+    access_token_expires = timedelta(minutes=settings.access_token_expire_minutes)
+    access_token = create_access_token(
+        data={"sub": user.username},
+        expires_delta=access_token_expires
     )
-    db.add(new_post)
-    db.commit()
-    db.refresh(new_post)
-    return new_post
 
-
-# --------- Get All Posts (owned by current user only) ---------
-@router.get("/", response_model=List[schemas.PostOut])
-def get_all_posts(
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
-):
-    return db.query(Post).filter(Post.owner_id == current_user.id).all()  # type: ignore
-
-# --------- Get Single Post (if owned) ---------
-@router.get("/{post_id}", response_model=schemas.PostOut)
-def get_post(
-    post_id: int,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
-):
-    post = db.query(Post).filter(
-        and_(Post.id == post_id, Post.owner_id == current_user.id)
-    ).first()
-    if not post:
-        raise HTTPException(status_code=404, detail="Post not found")
-    return post
-
-
-# --------- Delete Post ---------
-@router.delete("/{post_id}", status_code=status.HTTP_204_NO_CONTENT)
-def delete_post(
-    post_id: int,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
-):
-    post = db.query(Post).filter(
-        and_(Post.id == post_id, Post.owner_id == current_user.id)
-    ).first()
-    if not post:
-        raise HTTPException(status_code=404, detail="Post not found")
-    db.delete(post)
-    db.commit()
-    return None
-
-
-# --------- Update Post ---------
-@router.put("/{post_id}", response_model=schemas.PostOut)
-def update_post(
-    post_id: int,
-    updated_post: schemas.PostCreate,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
-):
-    post = db.query(Post).filter(
-        and_(Post.id == post_id, Post.owner_id == current_user.id)
-    ).first()
-    if not post:
-        raise HTTPException(status_code=404, detail="Post not found")
-
-    post.title = updated_post.title
-    post.content = updated_post.content
-    db.commit()
-    db.refresh(post)
-    return post
+    return {"access_token": access_token, "token_type": "bearer"}

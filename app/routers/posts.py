@@ -1,100 +1,142 @@
-from fastapi import APIRouter, Depends, HTTPException, status, Response
+from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 from typing import List
-
-from app import schemas, models, oauth2
 from app.database import get_db
-
-router = APIRouter(
-    prefix="/posts",
-    tags=["Posts"]
+from app.schemas.post import Post, PostCreate, PostUpdate
+from app.models.user import User
+from app.crud.post import (
+    get_post,
+    get_posts,
+    get_published_posts,
+    get_posts_by_user,
+    create_post,
+    update_post,
+    delete_post
 )
+from app.utils.dependencies import get_current_active_user
 
-# --------- Create Post ---------
-@router.post("/", response_model=schemas.PostOut)
-def create_post(
-    post: schemas.PostCreate,
-    db: Session = Depends(get_db),
-    current_user: models.User = Depends(oauth2.get_current_user)
+router = APIRouter(prefix="/posts", tags=["Posts"])
+
+
+@router.post("/", response_model=Post, status_code=status.HTTP_201_CREATED)
+def create_new_post(
+        post: PostCreate,
+        db: Session = Depends(get_db),
+        current_user: User = Depends(get_current_active_user)
 ):
-    new_post = models.Post(
-        title=post.title,
-        content=post.content,
-        owner_id=current_user.id
-    )
-    db.add(new_post)
-    db.commit()
-    db.refresh(new_post)
-    return new_post
+    """Create a new blog post"""
+    return create_post(db=db, post=post, user_id=current_user.id)
 
 
-# --------- Get All Posts (Owned by current user only) ---------
-@router.get("/", response_model=List[schemas.PostOut])
-def get_all_posts(
-    db: Session = Depends(get_db),
-    current_user: models.User = Depends(oauth2.get_current_user)
+@router.get("/", response_model=List[Post])
+def read_posts(
+        skip: int = 0,
+        limit: int = 100,
+        db: Session = Depends(get_db)
 ):
-    return db.query(models.Post).filter(models.Post.owner_id == current_user.id).all()
+    """Get all published posts (public)"""
+    posts = get_published_posts(db, skip=skip, limit=limit)
+    return posts
 
 
-# --------- Get Single Post ---------
-@router.get("/{post_id}", response_model=schemas.PostOut)
-def get_post(
-    post_id: int,
-    db: Session = Depends(get_db),
-    current_user: models.User = Depends(oauth2.get_current_user)
+@router.get("/all", response_model=List[Post])
+def read_all_posts(
+        skip: int = 0,
+        limit: int = 100,
+        db: Session = Depends(get_db),
+        current_user: User = Depends(get_current_active_user)
 ):
-    post = db.query(models.Post).filter(models.Post.id == post_id).first()
-
-    if not post:
-        raise HTTPException(status_code=404, detail="Post not found")
-
-    if post.owner_id != current_user.id:
-        raise HTTPException(status_code=403, detail="Not authorized to view this post")
-
-    return post
+    """Get all posts including unpublished (protected)"""
+    posts = get_posts(db, skip=skip, limit=limit)
+    return posts
 
 
-# --------- Update Post ---------
-@router.put("/posts/{id}", response_model=schemas.Post)
-def update_post(
-    id: int,
-    updated_post: schemas.PostCreate,
-    db: Session = Depends(get_db),
-    current_user: schemas.UserOut = Depends(oauth2.get_current_user),
+@router.get("/my-posts", response_model=List[Post])
+def read_my_posts(
+        skip: int = 0,
+        limit: int = 100,
+        db: Session = Depends(get_db),
+        current_user: User = Depends(get_current_active_user)
 ):
-    post = db.query(models.Post).filter(models.Post.id == id).first()
-
-    if not post:
-        raise HTTPException(status_code=404, detail="Post not found")
-
-    if post.owner_id != current_user.id:
-        raise HTTPException(status_code=403, detail="Not authorized to update this post")
-
-    post.title = updated_post.title
-    post.content = updated_post.content
-    post.published = updated_post.published
-    db.commit()
-    db.refresh(post)
-
-    return post
+    """Get current user's posts"""
+    posts = get_posts_by_user(db, user_id=current_user.id, skip=skip, limit=limit)
+    return posts
 
 
-# --------- Delete Post ---------
-@router.delete("/posts/{id}", status_code=status.HTTP_204_NO_CONTENT)
-def delete_post(
-    id: int,
-    db: Session = Depends(get_db),
-    current_user: schemas.UserOut = Depends(oauth2.get_current_user),
+@router.get("/{post_id}", response_model=Post)
+def read_post(
+        post_id: int,
+        db: Session = Depends(get_db)
 ):
-    post = db.query(models.Post).filter(models.Post.id == id).first()
+    """Get post by ID (public if published)"""
+    db_post = get_post(db, post_id=post_id)
+    if db_post is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Post not found"
+        )
 
-    if not post:
-        raise HTTPException(status_code=404, detail="Post not found")
+    # Only show published posts to public
+    if not db_post.published:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Post not found"
+        )
 
-    if post.owner_id != current_user.id:
-        raise HTTPException(status_code=403, detail="Not authorized to delete this post")
+    return db_post
 
-    db.delete(post)
-    db.commit()
-    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+@router.put("/{post_id}", response_model=Post)
+def update_post_route(
+        post_id: int,
+        post_update: PostUpdate,
+        db: Session = Depends(get_db),
+        current_user: User = Depends(get_current_active_user)
+):
+    """Update post (only author can update)"""
+    db_post = get_post(db, post_id=post_id)
+    if db_post is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Post not found"
+        )
+
+    # Check if current user is the author
+    if db_post.author_id != current_user.id and not current_user.is_superuser:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Not authorized to update this post"
+        )
+
+    updated_post = update_post(db, post_id=post_id, post_update=post_update)
+    return updated_post
+
+
+@router.delete("/{post_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_post_route(
+        post_id: int,
+        db: Session = Depends(get_db),
+        current_user: User = Depends(get_current_active_user)
+):
+    """Delete post (only author can delete)"""
+    db_post = get_post(db, post_id=post_id)
+    if db_post is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Post not found"
+        )
+
+    # Check if current user is the author
+    if db_post.author_id != current_user.id and not current_user.is_superuser:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Not authorized to delete this post"
+        )
+
+    success = delete_post(db, post_id=post_id)
+    if not success:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Post not found"
+        )
+    return None
