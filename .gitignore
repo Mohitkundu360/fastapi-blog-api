@@ -21,4 +21,5 @@ venv/
 *.pyd
 
 # PyCharm project
-*.iml
+*.iml.idea/
+.idea/
