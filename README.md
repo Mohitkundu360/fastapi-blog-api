@@ -44,8 +44,8 @@ On macOS or Linux, activate with `source venv/bin/activate`. Edit `.env` and set
 | Users | GET `/users/me` | current user |
 | Users | GET `/users/` | all users, token required |
 | Users | GET `/users/{user_id}` | token required |
-| Users | PUT `/users/{user_id}` | own profile only |
-| Users | DELETE `/users/{user_id}` | own profile only |
+| Users | PUT `/users/{user_id}` | own profile or superuser, otherwise 403 |
+| Users | DELETE `/users/{user_id}` | own profile or superuser, otherwise 403 |
 | Posts | POST `/posts/` | token required |
 | Posts | GET `/posts/` | published posts, public |
 | Posts | GET `/posts/all` | all posts, token required |
