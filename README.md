@@ -1,170 +1,83 @@
-Blog API - FastAPI Project
-A simple, secure, and well-structured Blog API built with FastAPI, SQLAlchemy, JWT Authentication, and SQLite.
-🚀 Features
+# FastAPI Blog API
 
-✅ User Registration & Login with JWT Authentication
-✅ Protected Routes for Authenticated Users
-✅ Full CRUD Operations for Blog Posts
-✅ SQLite Database with SQLAlchemy ORM
-✅ Pydantic Schemas for Request/Response Validation
-✅ Swagger UI Documentation at /docs
-✅ ReDoc Documentation at /redoc
-✅ Modular and Scalable Code Structure
-✅ Role-based Authorization (Author-only edit/delete)
-✅ Password Hashing with Bcrypt
-✅ CORS Support
+REST backend for a blogging platform built with FastAPI, SQLAlchemy and SQLite, with JWT authentication.
 
-📁 Project Structure
-blog_api/
-│
-├── app/
-│   ├── __init__.py
-│   ├── main.py                 # FastAPI application entry point
-│   ├── config.py               # Configuration settings
-│   ├── database.py             # Database connection
-│   │
-│   ├── models/                 # SQLAlchemy models
-│   │   ├── __init__.py
-│   │   ├── user.py
-│   │   └── post.py
-│   │
-│   ├── schemas/                # Pydantic schemas
-│   │   ├── __init__.py
-│   │   ├── user.py
-│   │   ├── post.py
-│   │   └── token.py
-│   │
-│   ├── routers/                # API routes
-│   │   ├── __init__.py
-│   │   ├── auth.py
-│   │   ├── users.py
-│   │   └── posts.py
-│   │
-│   ├── crud/                   # Database operations
-│   │   ├── __init__.py
-│   │   ├── user.py
-│   │   └── post.py
-│   │
-│   └── utils/                  # Utility functions
-│       ├── __init__.py
-│       ├── security.py
-│       └── dependencies.py
-│
-├── requirements.txt
-├── .env.example
-├── .gitignore
-└── README.md
-🛠️ Installation
-1. Clone the repository
-bashgit clone <repository-url>
-cd blog_api
-2. Create virtual environment
-bashpython -m venv venv
+## What it does
+- Register and log in. Login returns a JWT bearer token. Passwords are hashed with Bcrypt.
+- 14 REST endpoints for authentication, users and posts.
+- Anyone can read published posts. Creating posts and reading other data needs a token.
+- Updating or deleting a post returns 403 unless the caller is the post's author or a superuser.
+- Pydantic schemas validate request and response bodies.
+- Interactive docs: Swagger UI at `/docs`, ReDoc at `/redoc`.
 
-# On Windows
-venv\Scripts\activate
+## Project structure
 
-# On macOS/Linux
-source venv/bin/activate
-3. Install dependencies
-bashpip install -r requirements.txt
-4. Set up environment variables
-bashcp .env.example .env
-# Edit .env and add your own SECRET_KEY
-5. Run the application
-bashpython -m app.main
-# or
-uvicorn app.main:app --reload
-The API will be available at: http://localhost:8000
-📚 API Documentation
-Once the server is running, visit:
+    app/
+      main.py          FastAPI entry point
+      config.py        settings, read from .env
+      database.py      SQLAlchemy engine and session
+      models/          user.py, post.py
+      schemas/         user.py, post.py, token.py
+      routers/         auth.py, users.py, posts.py
+      crud/            user.py, post.py
+      utils/           security.py (hashing, JWT), dependencies.py
 
-Swagger UI: http://localhost:8000/docs
-ReDoc: http://localhost:8000/redoc
+## Run locally
+Prerequisites: Python 3.
 
-🔐 API Endpoints
-Authentication
+    git clone https://github.com/Mohitkundu360/fastapi-blog-api.git
+    cd fastapi-blog-api
+    python -m venv venv
+    source venv/Scripts/activate
+    pip install -r requirements.txt
+    cp .env.example .env
+    uvicorn app.main:app --reload
 
-POST /auth/register - Register a new user
-POST /auth/login - Login and get JWT token
+On macOS or Linux, activate with `source venv/bin/activate`. Edit `.env` and set your own `SECRET_KEY`. Settings include `DATABASE_URL`, `SECRET_KEY`, `ALGORITHM` and `ACCESS_TOKEN_EXPIRE_MINUTES`. The API runs on http://localhost:8000.
 
-Users
+## Endpoints
 
-GET /users/me - Get current user profile
-GET /users/ - Get all users (protected)
-GET /users/{user_id} - Get user by ID (protected)
-PUT /users/{user_id} - Update user (own profile only)
-DELETE /users/{user_id} - Delete user (own profile only)
+| Area | Method and path | Notes |
+|---|---|---|
+| Auth | POST `/auth/register` | create a user |
+| Auth | POST `/auth/login` | returns a JWT |
+| Users | GET `/users/me` | current user |
+| Users | GET `/users/` | all users, token required |
+| Users | GET `/users/{user_id}` | token required |
+| Users | PUT `/users/{user_id}` | own profile only |
+| Users | DELETE `/users/{user_id}` | own profile only |
+| Posts | POST `/posts/` | token required |
+| Posts | GET `/posts/` | published posts, public |
+| Posts | GET `/posts/all` | all posts, token required |
+| Posts | GET `/posts/my-posts` | current user's posts |
+| Posts | GET `/posts/{post_id}` | public if published |
+| Posts | PUT `/posts/{post_id}` | author or superuser, otherwise 403 |
+| Posts | DELETE `/posts/{post_id}` | author or superuser, otherwise 403 |
 
-Posts
+## Example requests
 
-POST /posts/ - Create a new post (protected)
-GET /posts/ - Get all published posts (public)
-GET /posts/all - Get all posts (protected)
-GET /posts/my-posts - Get current user's posts (protected)
-GET /posts/{post_id} - Get post by ID (public if published)
-PUT /posts/{post_id} - Update post (author only)
-DELETE /posts/{post_id} - Delete post (author only)
+Register:
 
-💡 Usage Examples
-1. Register a new user
-bashcurl -X POST "http://localhost:8000/auth/register" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "email": "user@example.com",
-    "username": "johndoe",
-    "password": "secretpassword"
-  }'
-2. Login
-bashcurl -X POST "http://localhost:8000/auth/login" \
-  -H "Content-Type: application/x-www-form-urlencoded" \
-  -d "username=johndoe&password=secretpassword"
-Response:
-json{
-  "access_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
-  "token_type": "bearer"
-}
-3. Create a post (with authentication)
-bashcurl -X POST "http://localhost:8000/posts/" \
-  -H "Authorization: Bearer YOUR_TOKEN_HERE" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "title": "My First Blog Post",
-    "content": "This is the content of my first blog post.",
-    "published": true
-  }'
-4. Get all published posts
-bashcurl -X GET "http://localhost:8000/posts/"
-🔒 Security Features
+    curl -X POST "http://localhost:8000/auth/register" -H "Content-Type: application/json" -d '{"email":"user@example.com","username":"johndoe","password":"secretpassword"}'
 
-Password Hashing: Passwords are hashed using Bcrypt
-JWT Authentication: Secure token-based authentication
-Protected Routes: Endpoints require valid JWT tokens
-Authorization: Users can only edit/delete their own posts
-SQL Injection Prevention: SQLAlchemy ORM protects against SQL injection
-Input Validation: Pydantic schemas validate all inputs
+Log in (form data):
 
-🧪 Testing
-You can test the API using:
+    curl -X POST "http://localhost:8000/auth/login" -H "Content-Type: application/x-www-form-urlencoded" -d "username=johndoe&password=secretpassword"
 
-Swagger UI at /docs
-Postman
-cURL commands
-Python requests library
+Create a post:
 
-📝 Configuration
-Edit .env file to customize:
+    curl -X POST "http://localhost:8000/posts/" -H "Authorization: Bearer YOUR_TOKEN" -H "Content-Type: application/json" -d '{"title":"My first post","content":"Hello","published":true}'
 
-DATABASE_URL - Database connection string
-SECRET_KEY - JWT secret key (generate a secure one!)
-ALGORITHM - JWT algorithm (default: HS256)
-ACCESS_TOKEN_EXPIRE_MINUTES - Token expiration time
+## Security notes
+- Passwords are hashed with Bcrypt. Tokens are signed JWTs.
+- Database access goes through the SQLAlchemy ORM.
+- Request bodies are validated by Pydantic schemas.
+- Post update and delete check the author on the server side.
 
-🚀 Deployment
-For production deployment:
+## Limitations
+- No automated tests and no CI yet.
+- SQLite by default, no migration tool.
+- Not deployed. Use a strong `SECRET_KEY` and a production database before deploying anywhere.
 
-Set DEBUG=False in config
-Use a strong SECRET_KEY
-Use PostgreSQL instead of SQLite
-Set up HTTPS
-Use a production ASGI server like Gunicorn with Uvicorn workers
+## Author
+Mohit Kundu. [GitHub](https://github.com/Mohitkundu360) | [LinkedIn](https://www.linkedin.com/in/mohitkundu-backend)
